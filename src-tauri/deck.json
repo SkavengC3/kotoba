@@ -1,0 +1,362 @@
+[
+  {
+    "id": 1,
+    "japanese": {
+      "origin": "食べる",
+      "kana": "たべる"
+    },
+    "translation": {
+      "Ru": {
+        "origin": "есть / кушать",
+        "transcription": "кушать"
+      },
+      "En": {
+        "origin": "to eat",
+        "transcription": "to eat"
+      }
+    },
+    "recall_level": null,
+    "examples": [
+      {
+        "japanese": "毎朝リンゴを食べる。",
+        "other": {
+          "Ru": "Каждое утро ем яблоко.",
+          "En": "I eat an apple every morning."
+        }
+      }
+    ],
+    "life_time": {
+      "on_repeat": false,
+      "interval": 0.0,
+      "next_recall": 0,
+      "streak": {
+        "streak_times": 0.0,
+        "streak_koef": 1.0
+      }
+    }
+  },
+  {
+    "id": 2,
+    "japanese": {
+      "origin": "飲む",
+      "kana": "のむ"
+    },
+    "translation": {
+      "Ru": {
+        "origin": "пить",
+        "transcription": "пить"
+      },
+      "En": {
+        "origin": "to drink",
+        "transcription": "to drink"
+      }
+    },
+    "recall_level": null,
+    "examples": [
+      {
+        "japanese": "お茶を飲みます。",
+        "other": {
+          "Ru": "Пью зеленый чай.",
+          "En": "I drink green tea."
+        }
+      }
+    ],
+    "life_time": {
+      "on_repeat": false,
+      "interval": 0.0,
+      "next_recall": 0,
+      "streak": {
+        "streak_times": 0.0,
+        "streak_koef": 1.0
+      }
+    }
+  },
+  {
+    "id": 3,
+    "japanese": {
+      "origin": "本",
+      "kana": "ほん"
+    },
+    "translation": {
+      "Ru": {
+        "origin": "книга",
+        "transcription": "книга"
+      },
+      "En": {
+        "origin": "book",
+        "transcription": "book"
+      }
+    },
+    "recall_level": null,
+    "examples": [
+      {
+        "japanese": "面白い本を読みました。",
+        "other": {
+          "Ru": "Прочитал интересную книгу.",
+          "En": "I read an interesting book."
+        }
+      }
+    ],
+    "life_time": {
+      "on_repeat": false,
+      "interval": 0.0,
+      "next_recall": 0,
+      "streak": {
+        "streak_times": 0.0,
+        "streak_koef": 1.0
+      }
+    }
+  },
+  {
+    "id": 4,
+    "japanese": {
+      "origin": "猫",
+      "kana": "ねこ"
+    },
+    "translation": {
+      "Ru": {
+        "origin": "кошка / кот",
+        "transcription": "кот"
+      },
+      "En": {
+        "origin": "cat",
+        "transcription": "cat"
+      }
+    },
+    "recall_level": null,
+    "examples": [
+      {
+        "japanese": "黒い猫がいます。",
+        "other": {
+          "Ru": "Там черная кошка.",
+          "En": "There is a black cat."
+        }
+      }
+    ],
+    "life_time": {
+      "on_repeat": false,
+      "interval": 0.0,
+      "next_recall": 0,
+      "streak": {
+        "streak_times": 0.0,
+        "streak_koef": 1.0
+      }
+    }
+  },
+  {
+    "id": 5,
+    "japanese": {
+      "origin": "犬",
+      "kana": "いぬ"
+    },
+    "translation": {
+      "Ru": {
+        "origin": "собака",
+        "transcription": "собака"
+      },
+      "En": {
+        "origin": "dog",
+        "transcription": "dog"
+      }
+    },
+    "recall_level": null,
+    "examples": [
+      {
+        "japanese": "公園で犬と散歩します。",
+        "other": {
+          "Ru": "Гуляю в парке с собакой.",
+          "En": "I walk in the park with a dog."
+        }
+      }
+    ],
+    "life_time": {
+      "on_repeat": false,
+      "interval": 0.0,
+      "next_recall": 0,
+      "streak": {
+        "streak_times": 0.0,
+        "streak_koef": 1.0
+      }
+    }
+  },
+  {
+    "id": 6,
+    "japanese": {
+      "origin": "水",
+      "kana": "みず"
+    },
+    "translation": {
+      "Ru": {
+        "origin": "вода",
+        "transcription": "вода"
+      },
+      "En": {
+        "origin": "water",
+        "transcription": "water"
+      }
+    },
+    "recall_level": null,
+    "examples": [
+      {
+        "japanese": "冷たい水をください。",
+        "other": {
+          "Ru": "Дайте, пожалуйста, холодной воды.",
+          "En": "Please give me cold water."
+        }
+      }
+    ],
+    "life_time": {
+      "on_repeat": false,
+      "interval": 0.0,
+      "next_recall": 0,
+      "streak": {
+        "streak_times": 0.0,
+        "streak_koef": 1.0
+      }
+    }
+  },
+  {
+    "id": 7,
+    "japanese": {
+      "origin": "行く",
+      "kana": "いく"
+    },
+    "translation": {
+      "Ru": {
+        "origin": "идти / ехать",
+        "transcription": "идти"
+      },
+      "En": {
+        "origin": "to go",
+        "transcription": "to go"
+      }
+    },
+    "recall_level": null,
+    "examples": [
+      {
+        "japanese": "明日東京へ行きます。",
+        "other": {
+          "Ru": "Завтра поеду в Токио.",
+          "En": "I will go to Tokyo tomorrow."
+        }
+      }
+    ],
+    "life_time": {
+      "on_repeat": false,
+      "interval": 0.0,
+      "next_recall": 0,
+      "streak": {
+        "streak_times": 0.0,
+        "streak_koef": 1.0
+      }
+    }
+  },
+  {
+    "id": 8,
+    "japanese": {
+      "origin": "見る",
+      "kana": "みる"
+    },
+    "translation": {
+      "Ru": {
+        "origin": "видеть / смотреть",
+        "transcription": "смотреть"
+      },
+      "En": {
+        "origin": "to see / to look",
+        "transcription": "to look"
+      }
+    },
+    "recall_level": null,
+    "examples": [
+      {
+        "japanese": "夜に映画を見ます。",
+        "other": {
+          "Ru": "Вечером смотрю фильм.",
+          "En": "I watch a movie in the evening."
+        }
+      }
+    ],
+    "life_time": {
+      "on_repeat": false,
+      "interval": 0.0,
+      "next_recall": 0,
+      "streak": {
+        "streak_times": 0.0,
+        "streak_koef": 1.0
+      }
+    }
+  },
+  {
+    "id": 9,
+    "japanese": {
+      "origin": "友達",
+      "kana": "ともだち"
+    },
+    "translation": {
+      "Ru": {
+        "origin": "друг / друзья",
+        "transcription": "друг"
+      },
+      "En": {
+        "origin": "friend",
+        "transcription": "friend"
+      }
+    },
+    "recall_level": null,
+    "examples": [
+      {
+        "japanese": "友達と日本語を勉強します。",
+        "other": {
+          "Ru": "Учу японский с другом.",
+          "En": "I study Japanese with a friend."
+        }
+      }
+    ],
+    "life_time": {
+      "on_repeat": false,
+      "interval": 0.0,
+      "next_recall": 0,
+      "streak": {
+        "streak_times": 0.0,
+        "streak_koef": 1.0
+      }
+    }
+  },
+  {
+    "id": 10,
+    "japanese": {
+      "origin": "日本語",
+      "kana": "にほんご"
+    },
+    "translation": {
+      "Ru": {
+        "origin": "японский язык",
+        "transcription": "японский"
+      },
+      "En": {
+        "origin": "Japanese language",
+        "transcription": "Japanese"
+      }
+    },
+    "recall_level": null,
+    "examples": [
+      {
+        "japanese": "日本語はとても面白いです。",
+        "other": {
+          "Ru": "Японский язык очень интересный.",
+          "En": "Japanese is very interesting."
+        }
+      }
+    ],
+    "life_time": {
+      "on_repeat": false,
+      "interval": 0.0,
+      "next_recall": 0,
+      "streak": {
+        "streak_times": 0.0,
+        "streak_koef": 1.0
+      }
+    }
+  }
+]
