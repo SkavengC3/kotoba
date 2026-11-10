@@ -5,15 +5,17 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::sync::Mutex;
 use tauri::State;
 
+mod db;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-enum RecallLevel{
+pub enum RecallLevel{
     Instantly,
     Difficult,
     Repeat,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-enum Language{
+pub enum Language{
     Ru,
     En,
     Es,
@@ -23,31 +25,31 @@ enum Language{
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-struct Japanese{
+pub struct Japanese{
     origin: String,
     kana: String
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-struct Translation{
+pub struct Translation{
     origin: String,
     transcription: String
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-struct Example{
+pub struct Example{
     japanese: String,
     other: HashMap<Language, String>
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-struct Streak{
+pub struct Streak{
     streak_times: f32,
     streak_koef: f32, //Умножение таймера на коэфициент в случае стрика
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-struct Schedule {
+pub struct Schedule {
     on_repeat: bool, //Если была нажата кнопка Repeat -> true, пока не нажмется другая
     interval: f32,
     next_recall: u64,
@@ -55,7 +57,7 @@ struct Schedule {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-struct Card{
+pub struct Card{
     id: u32,
     japanese: Japanese,
     translation: HashMap<Language, Translation>,
@@ -64,11 +66,12 @@ struct Card{
     life_time: Schedule
 }
 
-struct CardDeck{
+pub struct CardDeck{
     cards: Vec<Card>,
     todays_card: u32,//Функционал будет позже. Лимит выбирает сам пользователь
     lang: Language,
-    order: VecDeque<u32>
+    order: VecDeque<u32>,
+    conn: rusqlite::Connection,
 }
 
 #[tauri::command]
@@ -110,10 +113,12 @@ impl Schedule{
     }
 
     fn recalculate(&mut self, button: RecallLevel){
+        const DAY: f32 = 86400.0;
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
         if self.on_repeat && button != RecallLevel::Repeat{
             self.interval = 1.0;
             self.streak.streak_times = 0.0;
-            self.next_recall = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() + self.interval as u64;
+            self.next_recall = now + (self.interval * DAY) as u64;
             self.streak.streak_koef = 1.0;
             self.on_repeat = false;
         } else {
@@ -121,12 +126,12 @@ impl Schedule{
                 self.interval = 3.0*self.streak.streak_koef;
                 self.streak.streak_times += 1.0;
                 self.streak.streak_koef *= 1.2;
-                self.next_recall = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() + self.interval as u64;
+                self.next_recall = now + (self.interval * DAY) as u64;
             } else if button == RecallLevel::Difficult{
                 self.interval = 2.0*self.streak.streak_koef;
                 self.streak.streak_times += 0.0;
                 self.streak.streak_koef *= 1.0;
-                self.next_recall = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() + self.interval as u64;
+                self.next_recall = now + (self.interval * DAY) as u64;
             } else {
                 self.interval = 0.0;
                 self.streak.streak_times = 0.0;
@@ -138,18 +143,32 @@ impl Schedule{
 }
 
 impl CardDeck{
-    const DEFAULT_DECK_JSON: &str = include_str!("../deck.json");
+    pub const DEFAULT_DECK_JSON: &str = include_str!("../deck.json");
 
     fn new() -> Self{
-        let cards: Vec<Card> = serde_json::from_str(Self::DEFAULT_DECK_JSON)
-            .expect("Failed to parse default deck.json");
-        let order: VecDeque<u32> = cards.iter().map(|c| c.id).collect();
+        let conn = rusqlite::Connection::open("kotoba.db")
+            .expect("Failed to open kotoba database");
+        db::init_db(&conn).expect("Failed to initialize database");
+        db::seed_is_empty(&conn).expect("Failed to seed database");
+        let cards = db::load_cards(&conn).expect("Failed to load cards from db");
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let order: VecDeque<u32> = cards
+            .iter()
+            .filter(|c| c.life_time.next_recall <= now || c.life_time.on_repeat)
+            .map(|c| c.id)
+            .collect();
+
         CardDeck{
-            order,
+            conn,
             cards,
+            order,
             todays_card: 0,
             lang: Language::Ru,
-
         }
     }
 
@@ -166,6 +185,8 @@ impl CardDeck{
         if let Some(next_id) = self.next_card_id() {
             if let Some(card) = self.cards.iter_mut().find(|c| c.id == next_id) {
                 card.life_time.recalculate(button);
+                db::update_schedule(&self.conn, card.id, &card.life_time)
+                    .expect("Failed to update schedule");
             }
             if button == RecallLevel::Repeat {
                 self.order.push_back(next_id);
