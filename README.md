@@ -38,15 +38,22 @@ Kotoba is a local-first vocabulary and grammar study tool designed for daily JLP
 
 ## Installation
 
-Pre-built Linux binaries are published on the [Releases page](https://github.com/SkavengC3/kotoba/releases):
+Installers and packages are published on the [Releases page](https://github.com/SkavengC3/kotoba/releases):
 
-| Format | Target | Size | Install / Run |
-| :--- | :--- | :--- | :--- |
-| `.deb` | Debian / Ubuntu | 4.1 MB | `sudo dpkg -i Kotoba_0.1.0_amd64.deb` |
-| `.rpm` | Fedora / RHEL | 4.1 MB | `sudo rpm -i Kotoba-0.1.0-1.x86_64.rpm` |
-| `.AppImage` | Any Linux distro | 112 MB | `chmod +x Kotoba_0.1.0_amd64.AppImage && ./Kotoba_0.1.0_amd64.AppImage` |
+| Platform | Package / Format | Install / Run |
+| :--- | :--- | :--- |
+| **Debian / Ubuntu** | `.deb` | `sudo dpkg -i Kotoba_*_amd64.deb` |
+| **Fedora / RHEL** | `.rpm` | `sudo rpm -i Kotoba-*-1.x86_64.rpm` |
+| **Arch Linux** | `.pkg.tar.zst` | `sudo pacman -U kotoba-*-x86_64.pkg.tar.zst` |
+| **Linux (Portable)** | `.AppImage` | `chmod +x Kotoba_*_amd64.AppImage && ./Kotoba_*_amd64.AppImage` |
+| **Windows (x64)** | `.msi` / `-setup.exe` | Run the installer wizard |
+| **macOS (Universal)** | `.dmg` | Drag `Kotoba.app` into `/Applications` *(see note below)* |
 
-*Native `.deb` and `.rpm` packages link dynamically against your system's `WebKitGTK` runtime (~4 MB); the `.AppImage` bundles GTK/WebKit runtimes internally for portability.*
+- **Linux binary sizes:** Native `.deb`, `.rpm`, and `.pkg.tar.zst` packages link dynamically against your system's `WebKitGTK` runtime (~4 MB); `.AppImage` (~112 MB) bundles GTK/WebKit internally for portability.
+- **macOS Gatekeeper:** CI builds are currently unsigned (no Apple Developer ID certificate). If macOS reports the app cannot be verified on first launch, remove the quarantine attribute once:
+  ```bash
+  xattr -cr /Applications/Kotoba.app
+  ```
 
 ---
 
@@ -81,6 +88,9 @@ kotoba/
 │       ├── db.rs             # SQLite schema, migrations, seeding, activity log
 │       ├── parser.rs         # TSV deck parser
 │       └── structs.rs        # Shared serde types (Card, Schedule, UserProgress)
+├── packaging/arch/
+│   ├── PKGBUILD              # Arch Linux build recipe for .pkg.tar.zst
+│   └── kotoba.desktop        # XDG desktop launcher entry
 ├── scripts/
 │   └── fetch_audio.py        # Reproducible Edge TTS batch audio generator
 └── static/audio/             # Pre-bundled MP3 audio assets (1.mp3 .. 60.mp3)
@@ -102,6 +112,10 @@ kotoba/
   - Debian / Ubuntu:
     ```bash
     sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev
+    ```
+  - Arch Linux:
+    ```bash
+    sudo pacman -S --needed webkit2gtk-4.1 gtk3 librsvg libsoup3 rust nodejs npm
     ```
 
 ### Commands
@@ -131,10 +145,10 @@ python3 scripts/fetch_audio.py
 
 ## Roadmap
 
+- [x] Automated multi-platform CI/CD releases (Linux `.deb`/`.rpm`/`.AppImage`, Arch `.pkg.tar.zst`, Windows `.msi`/`.exe`, macOS Universal `.dmg`)
 - [ ] Expand built-in vocabulary deck beyond the initial 60 N5 words
 - [ ] External `.json` / `.tsv` deck import from the Settings screen
 - [ ] Full UI and card translation localization (English / multilingual switching is currently stubbed in settings persistence)
-- [ ] Automated Windows (`.msi` / `.exe`) builds via GitHub Actions
 
 ---
 

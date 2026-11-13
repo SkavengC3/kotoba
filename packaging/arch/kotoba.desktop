@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Kotoba
+GenericName=Japanese Vocabulary Trainer
+Comment=Keyboard-driven Japanese SRS study application
+Exec=kotoba
+Icon=kotoba
+Terminal=false
+Type=Application
+Categories=Education;Languages;
+StartupWMClass=kotoba

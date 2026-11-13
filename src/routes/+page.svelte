@@ -1117,6 +1117,8 @@
     --border-line-dark: #D4CEBF;     /* Усиленная граница */
     --hanko-red: #C83226;            /* Традиционная японская киноварь (朱色) */
     --hanko-faint: rgba(200, 50, 38, 0.08);
+    --font-serif-jp: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", Georgia, serif;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", sans-serif;
   }
 
   :global(body) {
@@ -1211,7 +1213,7 @@
     border: 1px solid var(--border-line-dark);
     padding: 5px 12px;
     border-radius: 3px;
-    font-family: -apple-system, sans-serif;
+    font-family: var(--font-sans);
   }
 
   .streak-fire {
@@ -1261,7 +1263,7 @@
     font-weight: 600;
     margin: 0;
     color: var(--ink-black);
-    font-family: "Hiragino Mincho ProN", serif;
+    font-family: var(--font-serif-jp);
   }
 
   /* ================== ВАРИАНТ А: КНИЖНЫЙ РАЗВОРОТ (BOOKSPREAD) ================== */
@@ -1278,7 +1280,7 @@
     color: var(--ink-secondary);
     font-size: 0.95rem;
     margin: 6px 0 0 0;
-    font-family: -apple-system, sans-serif;
+    font-family: var(--font-sans);
   }
 
   .bookspread-board {
@@ -1348,7 +1350,7 @@
     font-size: 1.35rem;
     font-weight: 500;
     color: var(--ink-black);
-    font-family: "Hiragino Mincho ProN", serif;
+    font-family: var(--font-serif-jp);
     line-height: 1.25;
     margin: 3px 0;
     white-space: nowrap;
@@ -1359,7 +1361,7 @@
   .m-ru {
     font-size: 0.72rem;
     color: var(--ink-secondary);
-    font-family: -apple-system, sans-serif;
+    font-family: var(--font-sans);
     white-space: nowrap;
   }
 
@@ -1377,7 +1379,7 @@
     display: flex;
     flex-direction: column;
     gap: 16px;
-    font-family: -apple-system, sans-serif;
+    font-family: var(--font-sans);
   }
 
   .brief-item {
@@ -1462,7 +1464,7 @@
     border-radius: 4px;
     display: flex;
     align-items: center;
-    font-family: -apple-system, sans-serif;
+    font-family: var(--font-sans);
   }
 
   .rhythm-title {
@@ -1519,7 +1521,7 @@
     font-weight: 600;
     cursor: pointer;
     border-radius: 3px;
-    font-family: -apple-system, sans-serif;
+    font-family: var(--font-sans);
     transition: all 0.15s ease;
   }
 
@@ -1584,7 +1586,7 @@
     font-weight: 700;
     font-size: 1.1rem;
     color: var(--ink-black);
-    font-family: "Hiragino Mincho ProN", serif;
+    font-family: var(--font-serif-jp);
   }
 
   .brand-sub {
@@ -1695,14 +1697,14 @@
     border-radius: 4px;
     max-width: 500px;
     margin: 40px auto 0 auto;
-    font-family: -apple-system, sans-serif;
+    font-family: var(--font-sans);
   }
 
   .completion-title {
     font-size: 1.6rem;
     color: var(--ink-black);
     margin: 0 0 10px 0;
-    font-family: "Hiragino Mincho ProN", serif;
+    font-family: var(--font-serif-jp);
   }
 
   .completion-desc {
@@ -1786,7 +1788,7 @@
     left: 18px;
     font-size: 0.72rem;
     color: var(--ink-faint);
-    font-family: -apple-system, sans-serif;
+    font-family: var(--font-sans);
     letter-spacing: 0.05em;
     text-transform: uppercase;
   }
@@ -1883,14 +1885,14 @@
     font-weight: 500;
     color: var(--ink-black);
     line-height: 1.1;
-    font-family: "Hiragino Mincho ProN", serif;
+    font-family: var(--font-serif-jp);
   }
 
   .reveal-hint {
     margin-top: 24px;
     font-size: 0.8rem;
     color: var(--hanko-red);
-    font-family: -apple-system, sans-serif;
+    font-family: var(--font-sans);
   }
 
   /* Правая карточка (Значение и контекст) */
@@ -1911,7 +1913,7 @@
     margin: 0 0 20px 0;
     font-weight: 600;
     color: var(--ink-black);
-    font-family: -apple-system, sans-serif;
+    font-family: var(--font-sans);
   }
 
   .example-box {
@@ -1929,7 +1931,7 @@
   .example-target {
     font-size: 0.95rem;
     color: var(--ink-secondary);
-    font-family: -apple-system, sans-serif;
+    font-family: var(--font-sans);
   }
 
   /* Панель кнопок (строгие прямоугольные клавиши) */
@@ -1940,7 +1942,7 @@
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.3s ease;
-    font-family: -apple-system, sans-serif;
+    font-family: var(--font-sans);
   }
 
   .review-dock.visible {
@@ -2011,7 +2013,7 @@
   .blitz-kanji {
     font-size: 4rem;
     margin-bottom: 4px;
-    font-family: "Hiragino Mincho ProN", serif;
+    font-family: var(--font-serif-jp);
   }
 
   .blitz-kana {
@@ -2041,7 +2043,7 @@
     color: var(--ink-secondary);
     font-size: 0.95rem;
     margin: 6px 0 0 0;
-    font-family: -apple-system, sans-serif;
+    font-family: var(--font-sans);
   }
 
   .grammar-toolbar {
@@ -2050,7 +2052,7 @@
     flex-direction: column;
     gap: 18px;
     margin-bottom: 24px;
-    font-family: -apple-system, sans-serif;
+    font-family: var(--font-sans);
   }
 
   /* Каталожные вкладки в стиле японского оглавления (目次) */
@@ -2073,7 +2075,7 @@
     align-items: baseline;
     gap: 8px;
     transition: all 0.15s ease;
-    font-family: -apple-system, sans-serif;
+    font-family: var(--font-sans);
   }
 
   .index-tab:hover {
@@ -2086,7 +2088,7 @@
   }
 
   .tab-jp {
-    font-family: "Hiragino Mincho ProN", serif;
+    font-family: var(--font-serif-jp);
     font-size: 0.95rem;
     font-weight: 600;
     color: var(--ink-black);
@@ -2148,7 +2150,7 @@
     border: none;
     font-size: 0.9rem;
     color: var(--ink-black);
-    font-family: -apple-system, sans-serif;
+    font-family: var(--font-sans);
     outline: none;
   }
 
@@ -2230,12 +2232,12 @@
   .entry-content h3 {
     margin: 4px 0 8px 0;
     font-size: 1.25rem;
-    font-family: "Hiragino Mincho ProN", serif;
+    font-family: var(--font-serif-jp);
     color: var(--ink-black);
   }
 
   .formula-line {
-    font-family: -apple-system, sans-serif;
+    font-family: var(--font-sans);
     font-size: 0.88rem;
     color: var(--ink-secondary);
     margin: 4px 0 12px 0;
@@ -2251,7 +2253,7 @@
   }
 
   .entry-desc {
-    font-family: -apple-system, sans-serif;
+    font-family: var(--font-sans);
     font-size: 0.92rem;
     color: var(--ink-secondary);
     line-height: 1.6;
@@ -2286,7 +2288,7 @@
   .ex-jp {
     font-weight: 600;
     color: var(--ink-black);
-    font-family: "Hiragino Mincho ProN", serif;
+    font-family: var(--font-serif-jp);
     font-size: 1.05rem;
   }
 
@@ -2299,7 +2301,7 @@
   .ex-ru {
     font-size: 0.88rem;
     color: var(--ink-secondary);
-    font-family: -apple-system, sans-serif;
+    font-family: var(--font-sans);
   }
 
   /* ================== СЛОВАРЬ (5.0 単語帳) ================== */
@@ -2317,7 +2319,7 @@
     color: var(--ink-secondary);
     font-size: 0.95rem;
     margin: 6px 0 0 0;
-    font-family: -apple-system, sans-serif;
+    font-family: var(--font-sans);
   }
 
   .dict-toolbar {
@@ -2326,7 +2328,7 @@
     flex-direction: column;
     gap: 18px;
     margin-bottom: 24px;
-    font-family: -apple-system, sans-serif;
+    font-family: var(--font-sans);
   }
 
   .dict-index-nav {
@@ -2378,7 +2380,7 @@
     font-size: 0.85rem;
     color: var(--ink-black);
     outline: none;
-    font-family: -apple-system, sans-serif;
+    font-family: var(--font-sans);
     cursor: pointer;
   }
 
@@ -2431,7 +2433,7 @@
     font-size: 1.45rem;
     font-weight: 500;
     color: var(--ink-black);
-    font-family: "Hiragino Mincho ProN", serif;
+    font-family: var(--font-serif-jp);
     line-height: 1.2;
   }
 
@@ -2446,7 +2448,7 @@
     font-size: 1.05rem;
     font-weight: 600;
     color: var(--ink-black);
-    font-family: -apple-system, sans-serif;
+    font-family: var(--font-sans);
   }
 
   .dict-example {
@@ -2516,7 +2518,7 @@
     background: var(--paper-card);
     border: 1px solid var(--border-line-dark);
     border-radius: 4px;
-    font-family: -apple-system, sans-serif;
+    font-family: var(--font-sans);
   }
 
   .settings-item {
@@ -2556,7 +2558,7 @@
     justify-content: center;
     font-size: 2.2rem;
     margin: 0 auto 20px auto;
-    font-family: "Hiragino Mincho ProN", serif;
+    font-family: var(--font-serif-jp);
   }
 
   /* Кнопка настроек в правом нижнем углу */

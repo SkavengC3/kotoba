@@ -1,0 +1,62 @@
+# Maintainer: Heorhii Laptiev <heorhii.laptiev@student.tuke.sk>
+pkgname=kotoba
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Keyboard-driven Japanese SRS desktop application (JLPT N5)"
+arch=('x86_64')
+url="https://github.com/SkavengC3/kotoba"
+license=('MIT')
+depends=(
+  'cairo'
+  'gdk-pixbuf2'
+  'glib2'
+  'glibc'
+  'gtk3'
+  'hicolor-icon-theme'
+  'libsoup3'
+  'pango'
+  'webkit2gtk-4.1'
+)
+makedepends=(
+  'cargo'
+  'git'
+  'nodejs'
+  'npm'
+  'rust'
+)
+options=('!lto' '!debug')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+  cd "$pkgname-$pkgver"
+  npm ci
+  export CARGO_HOME="${CARGO_HOME:-$srcdir/.cargo}"
+  cargo fetch --locked --manifest-path src-tauri/Cargo.toml
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+  export CARGO_HOME="${CARGO_HOME:-$srcdir/.cargo}"
+  npx tauri build --no-bundle --ci
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+
+  install -Dm755 "src-tauri/target/release/kotoba" \
+    "$pkgdir/usr/bin/kotoba"
+
+  install -Dm644 "packaging/arch/kotoba.desktop" \
+    "$pkgdir/usr/share/applications/kotoba.desktop"
+
+  install -Dm644 "src-tauri/icons/32x32.png" \
+    "$pkgdir/usr/share/icons/hicolor/32x32/apps/kotoba.png"
+  install -Dm644 "src-tauri/icons/128x128.png" \
+    "$pkgdir/usr/share/icons/hicolor/128x128/apps/kotoba.png"
+  install -Dm644 "src-tauri/icons/128x128@2x.png" \
+    "$pkgdir/usr/share/icons/hicolor/256x256/apps/kotoba.png"
+
+  install -Dm644 "LICENSE" \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
