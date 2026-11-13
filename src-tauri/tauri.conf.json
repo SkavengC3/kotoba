@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "kotoba",
+  "productName": "Kotoba",
   "version": "0.1.0",
   "identifier": "com.heorhii.kotoba",
   "build": {
@@ -12,9 +12,12 @@
   "app": {
     "windows": [
       {
-        "title": "kotoba",
-        "width": 800,
-        "height": 600
+        "title": "言葉 Kotoba",
+        "width": 1000,
+        "height": 720,
+        "minWidth": 840,
+        "minHeight": 620,
+        "center": true
       }
     ],
     "security": {

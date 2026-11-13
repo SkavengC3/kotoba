@@ -1,27 +1,55 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
+  import { GRAMMAR_RULES, type GrammarCategory } from "$lib/grammar";
+  import { playCardAudio } from "$lib/audio";
 
-  interface Japanese {
-    origin: string;
-    kana: string;
+  interface Streak {
+    streak_times: number;
+    streak_koef: number;
   }
 
-  interface Translation {
-    origin: string;
-    transcription: string;
-  }
-
-  interface Example {
-    japanese: string;
-    other: Record<string, string>;
+  interface Schedule {
+    on_repeat: boolean;
+    interval: number;
+    next_recall: number;
+    streak: Streak;
   }
 
   interface Card {
     id: number;
-    japanese: Japanese;
-    translation: Record<string, Translation>;
-    examples: Example[];
+    kanji: string;
+    kana: string;
+    translation: string;
+    example_japan?: string | null;
+    example_trans?: string | null;
+    recall_level?: string | null;
+    life_time?: Schedule;
+  }
+
+  interface DeckStats {
+    due_today: number;
+    total_cards: number;
+    repetition_count: number;
+    learned_count: number;
+  }
+
+  interface DayActivity {
+    day_name: string;
+    date: string;
+    done: boolean;
+    is_today: boolean;
+  }
+
+  interface UserProgress {
+    streak_days: number;
+    today_completed: boolean;
+    week_days: DayActivity[];
+  }
+
+  interface AppSettings {
+    daily_quota: number;
+    language: string;
   }
 
   type Screen = "dashboard" | "lesson" | "blitz" | "grammar" | "dictionary" | "settings";
@@ -34,15 +62,167 @@
   let totalSessionCount = $state(10);
   let completedCount = $state(0);
 
+  let stats = $state<DeckStats>({
+    due_today: 0,
+    total_cards: 0,
+    repetition_count: 0,
+    learned_count: 0,
+  });
+
+  const DEFAULT_WEEK_DAYS: DayActivity[] = [
+    { day_name: "Пн", date: "", done: false, is_today: false },
+    { day_name: "Вт", date: "", done: false, is_today: false },
+    { day_name: "Ср", date: "", done: false, is_today: false },
+    { day_name: "Чт", date: "", done: false, is_today: false },
+    { day_name: "Пт", date: "", done: false, is_today: false },
+    { day_name: "Сб", date: "", done: false, is_today: false },
+    { day_name: "Вс", date: "", done: false, is_today: false },
+  ];
+
+  let userProgress = $state<UserProgress>({
+    streak_days: 0,
+    today_completed: false,
+    week_days: DEFAULT_WEEK_DAYS,
+  });
+
+  let appSettings = $state<AppSettings>({
+    daily_quota: 10,
+    language: "Ru",
+  });
+
+  const todayFormatted = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' }).format(new Date());
+
+  // Словарь (5.0 単語帳)
+  let allCards = $state<Card[]>([]);
+  let dictSearch = $state("");
+  type DictFilter = "all" | "learned" | "review" | "new";
+  let dictFilter = $state<DictFilter>("all");
+  type DictSort = "id" | "kana" | "interval";
+  let dictSort = $state<DictSort>("id");
+
+  let filteredCards = $derived.by(() => {
+    let result = allCards;
+
+    // 1. Фильтр по статусу изучения
+    if (dictFilter === "learned") {
+      result = result.filter((c) => (c.life_time?.streak?.streak_times ?? 0) > 0);
+    } else if (dictFilter === "review") {
+      result = result.filter((c) => c.life_time?.on_repeat);
+    } else if (dictFilter === "new") {
+      result = result.filter(
+        (c) => (c.life_time?.streak?.streak_times ?? 0) === 0 && !c.life_time?.on_repeat
+      );
+    }
+
+    // 2. Поиск по подстроке
+    const q = dictSearch.trim().toLowerCase();
+    if (q) {
+      result = result.filter((c) =>
+        c.kanji.toLowerCase().includes(q) ||
+        c.kana.toLowerCase().includes(q) ||
+        c.translation.toLowerCase().includes(q) ||
+        (c.example_japan && c.example_japan.toLowerCase().includes(q)) ||
+        (c.example_trans && c.example_trans.toLowerCase().includes(q))
+      );
+    }
+
+    // 3. Сортировка
+    return [...result].sort((a, b) => {
+      if (dictSort === "kana") {
+        return a.kana.localeCompare(b.kana, "ja");
+      } else if (dictSort === "interval") {
+        return (b.life_time?.interval ?? 0) - (a.life_time?.interval ?? 0);
+      } else {
+        return a.id - b.id;
+      }
+    });
+  });
+
+  async function loadAllCards() {
+    try {
+      allCards = await invoke<Card[]>("get_all_cards");
+    } catch (e) {
+      console.error("Failed to load all cards", e);
+    }
+  }
+
+  // Грамматика
+  let grammarSearch = $state("");
+  let grammarCategory = $state<GrammarCategory>("all");
+
+  let filteredGrammar = $derived(
+    GRAMMAR_RULES.filter((rule) => {
+      const matchesCategory = grammarCategory === "all" || rule.category === grammarCategory;
+      if (!matchesCategory) return false;
+      if (!grammarSearch.trim()) return true;
+      const q = grammarSearch.toLowerCase().trim();
+      return (
+        rule.title.toLowerCase().includes(q) ||
+        rule.formula.toLowerCase().includes(q) ||
+        rule.desc.toLowerCase().includes(q) ||
+        rule.examples.some((ex) => ex.jp.includes(q) || ex.ru.toLowerCase().includes(q))
+      );
+    })
+  );
+
   // Спринт (60 сек)
   let blitzTimer = $state(60);
   let blitzScore = $state(0);
   let blitzActive = $state(false);
   let blitzInterval: any = null;
+  let blitzCard = $state<Card | null>(null);
 
   async function loadCard() {
     card = await invoke<Card | null>("get_current_card");
     isRevealed = false;
+  }
+
+  async function loadStats() {
+    try {
+      stats = await invoke<DeckStats>("get_deck_stats");
+      if (stats.due_today > 0 && completedCount === 0) {
+        totalSessionCount = Math.min(stats.due_today, 10);
+      }
+    } catch (e) {
+      console.error("Failed to load deck stats", e);
+    }
+  }
+
+  async function loadUserProgress() {
+    try {
+      const prog = await invoke<UserProgress>("get_user_progress");
+      if (prog && prog.week_days && prog.week_days.length === 7) {
+        userProgress = prog;
+      } else if (prog) {
+        userProgress = { ...prog, week_days: DEFAULT_WEEK_DAYS };
+      }
+    } catch (e) {
+      console.error("Failed to load user progress", e);
+    }
+  }
+
+  async function loadAppSettings() {
+    try {
+      appSettings = await invoke<AppSettings>("get_app_settings");
+      currentLang = appSettings.language;
+    } catch (e) {
+      console.error("Failed to load app settings", e);
+    }
+  }
+
+  async function saveSettings(quota: number, lang: string) {
+    try {
+      await invoke("save_app_settings", { dailyQuota: quota, language: lang });
+      appSettings.daily_quota = quota;
+      appSettings.language = lang;
+      currentLang = lang;
+    } catch (e) {
+      console.error("Failed to save app settings", e);
+    }
+  }
+
+  async function loadNextBlitzCard() {
+    blitzCard = await invoke<Card | null>("get_random_card");
   }
 
   async function handleReview(button: "Instantly" | "Difficult" | "Repeat") {
@@ -51,11 +231,19 @@
     }
     card = await invoke<Card | null>("review", { button });
     isRevealed = false;
+    if (!card) {
+      await loadStats();
+      await loadAllCards();
+      await loadUserProgress();
+    }
   }
 
   function flipCard() {
     if (!isRevealed) {
       isRevealed = true;
+      if (card) {
+        playCardAudio(card.id);
+      }
     }
   }
 
@@ -63,17 +251,24 @@
     currentScreen = screen;
     if (screen === "lesson") {
       loadCard();
+    } else if (screen === "dashboard") {
+      loadStats();
+      loadUserProgress();
+    } else if (screen === "dictionary") {
+      loadAllCards();
+    } else if (screen === "settings") {
+      loadAppSettings();
     }
-    if (screen !== "blitz" && blitzActive) {
-      stopBlitz();
+    if (screen !== "blitz") {
+      resetBlitz();
     }
   }
 
-  function startBlitz() {
+  async function startBlitz() {
     blitzActive = true;
     blitzTimer = 60;
     blitzScore = 0;
-    loadCard();
+    await loadNextBlitzCard();
     clearInterval(blitzInterval);
     blitzInterval = setInterval(() => {
       if (blitzTimer > 0) {
@@ -87,6 +282,25 @@
   function stopBlitz() {
     blitzActive = false;
     clearInterval(blitzInterval);
+  }
+
+  function resetBlitz() {
+    blitzActive = false;
+    clearInterval(blitzInterval);
+    blitzTimer = 60;
+    blitzScore = 0;
+    blitzCard = null;
+  }
+
+  function blitzKnown() {
+    if (!blitzActive) return;
+    blitzScore += 1;
+    loadNextBlitzCard();
+  }
+
+  function blitzSkip() {
+    if (!blitzActive) return;
+    loadNextBlitzCard();
   }
 
   // Обработка горячих клавиш (Keyboard-First UX)
@@ -117,6 +331,13 @@
         return;
       }
 
+      // Горячая клавиша R: повтор эталонного аудио
+      if (event.key === "r" || event.key === "R" || event.key === "к" || event.key === "К") {
+        event.preventDefault();
+        playCardAudio(card.id);
+        return;
+      }
+
       if (!isRevealed) {
         // Если карта закрыта: Пробел или Enter открывают её
         if (event.key === " " || event.key === "Enter") {
@@ -133,14 +354,40 @@
           handleReview("Instantly");
         }
       }
+      return;
+    }
+
+    // Горячие клавиши на экране спринта
+    if (currentScreen === "blitz") {
+      if (!blitzActive) {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          startBlitz();
+        }
+        return;
+      }
+
+      if (event.key === "1" || event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        blitzKnown();
+      } else if (event.key === "2" || event.key === "ArrowRight") {
+        event.preventDefault();
+        blitzSkip();
+      }
+      return;
     }
   }
 
   onMount(() => {
+    loadStats();
     loadCard();
+    loadAllCards();
+    loadUserProgress();
+    loadAppSettings();
     window.addEventListener("keydown", handleKeydown);
     return () => {
       window.removeEventListener("keydown", handleKeydown);
+      resetBlitz();
     };
   });
 </script>
@@ -202,6 +449,15 @@
           <span class="nav-idx">5.0</span>
           <span class="nav-label">単語帳 (Мой словарь)</span>
         </button>
+
+        <button 
+          class="nav-item" 
+          class:active={currentScreen === "settings"} 
+          onclick={() => navigateTo("settings")}
+        >
+          <span class="nav-idx">6.0</span>
+          <span class="nav-label">設定 (Настройки)</span>
+        </button>
       </nav>
     </div>
   </aside>
@@ -221,8 +477,8 @@
     {:else}
       <div class="streak-badge" title="Серия занятий без пропусков">
         <span class="streak-fire">🔥</span>
-        <span class="streak-num">4</span>
-        <span class="streak-label">дня подряд</span>
+        <span class="streak-num">{userProgress.streak_days}</span>
+        <span class="streak-label">{userProgress.streak_days === 1 ? 'день' : (userProgress.streak_days >= 2 && userProgress.streak_days <= 4) ? 'дня' : 'дней'} подряд</span>
       </div>
     {/if}
   </header>
@@ -232,9 +488,17 @@
     <div class="content-view dashboard-layout-spread">
       <!-- Заголовок дня -->
       <div class="spread-header">
-        <div class="date-meta">9 ноября • 4 日目</div>
+        <div class="date-meta">{todayFormatted} • {userProgress.streak_days > 0 ? `${userProgress.streak_days} 日目` : '1 日目'}</div>
         <h1 class="page-title">Сегодняшний разворот</h1>
-        <p class="spread-subtitle">10 выражений к освоению. Оценочное время: ~5 минут.</p>
+        <p class="spread-subtitle">
+          {#if userProgress.today_completed}
+            Все запланированные карточки на сегодня освоены!
+          {:else if stats.due_today > 0}
+            {stats.due_today} {stats.due_today === 1 ? 'выражение' : stats.due_today < 5 ? 'выражения' : 'выражений'} к освоению. Оценочное время: ~{Math.max(1, Math.ceil(stats.due_today * 0.5))} мин.
+          {:else}
+            Все запланированные карточки на сегодня освоены!
+          {/if}
+        </p>
       </div>
 
       <!-- Главный книжный разворот: Сетка слов слева + Панель действия справа -->
@@ -242,7 +506,7 @@
         <!-- Левая часть: Реальная сетка иероглифов сегодняшней сессии -->
         <div class="spread-words-col">
           <div class="col-meta-header">
-            <span>ПРЕВЬЮ СЛОВАРЯ (10)</span>
+            <span>ПРЕВЬЮ СЛОВАРЯ ({stats.total_cards || 60})</span>
             <span class="col-sub">JLPT N5</span>
           </div>
 
@@ -304,28 +568,39 @@
         <div class="spread-action-col">
           <div class="session-brief">
             <div class="brief-item">
-              <span class="brief-label">Новые слова</span>
-              <strong class="brief-val">10</strong>
+              <span class="brief-label">К повторению</span>
+              <strong class="brief-val">{stats.due_today}</strong>
             </div>
             <div class="brief-item">
               <span class="brief-label">На повторении</span>
-              <strong class="brief-val">0</strong>
+              <strong class="brief-val">{stats.repetition_count}</strong>
             </div>
             <div class="brief-item-mastery">
               <div class="mastery-label-row">
                 <span class="brief-label">Освоение колоды N5</span>
-                <strong class="brief-val">10%</strong>
+                <strong class="brief-val">
+                  {stats.total_cards > 0 ? Math.round((stats.learned_count / stats.total_cards) * 100) : 0}%
+                </strong>
               </div>
               <div class="mini-progress-track">
-                <div class="mini-progress-fill" style="width: 10%"></div>
+                <div 
+                  class="mini-progress-fill" 
+                  style="width: {stats.total_cards > 0 ? Math.min(100, (stats.learned_count / stats.total_cards) * 100) : 0}%"
+                ></div>
               </div>
-              <span class="mastery-subtext">10 из 100 базовых слов</span>
+              <span class="mastery-subtext">{stats.learned_count} из {stats.total_cards} базовых слов</span>
             </div>
           </div>
 
           <div class="action-dock-box">
             <button class="action-btn-primary spread-start-btn" onclick={() => navigateTo("lesson")}>
-              Открыть урок →
+              {#if userProgress.today_completed}
+                Урок пройден ✓
+              {:else if stats.due_today > 0}
+                Открыть урок →
+              {:else}
+                Повторить урок →
+              {/if}
             </button>
             <span class="hotkey-hint">Клавиша: Enter</span>
           </div>
@@ -337,13 +612,11 @@
         <span class="rhythm-title">НЕДЕЛЬНЫЙ РИТМ</span>
         <div class="rhythm-divider-vertical"></div>
         <div class="rhythm-dots">
-          <span class="r-day done"><span class="r-mark">●</span> Пн</span>
-          <span class="r-day done"><span class="r-mark">●</span> Вт</span>
-          <span class="r-day done"><span class="r-mark">●</span> Ср</span>
-          <span class="r-day done today"><span class="r-mark">●</span> Чт</span>
-          <span class="r-day wait"><span class="r-mark">○</span> Пт</span>
-          <span class="r-day wait"><span class="r-mark">○</span> Сб</span>
-          <span class="r-day wait"><span class="r-mark">○</span> Вс</span>
+          {#each userProgress.week_days as day}
+            <span class="r-day" class:done={day.done} class:today={day.is_today} class:wait={!day.done && !day.is_today}>
+              <span class="r-mark">{day.done ? '●' : '○'}</span> {day.day_name}
+            </span>
+          {/each}
         </div>
       </div>
     </div>
@@ -366,9 +639,24 @@
           <!-- svelte-ignore a11y_click_events_have_key_events -->
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div class="paper-card card-japanese" onclick={flipCard}>
-            <div class="card-tag">単語 • Слово</div>
-            <div class="furigana-top">{card.japanese.kana}</div>
-            <h1 class="kanji-display">{card.japanese.origin}</h1>
+            <div class="card-top-row">
+              <span class="card-tag">単語 • Слово</span>
+              <button 
+                type="button" 
+                class="card-audio-btn" 
+                onclick={(e) => { e.stopPropagation(); if (card) playCardAudio(card.id); }}
+                title="Прослушать произношение [R]"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                  <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                  <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+                </svg>
+                <span class="audio-btn-kbd">R</span>
+              </button>
+            </div>
+            <div class="furigana-top">{card.kana}</div>
+            <h1 class="kanji-display">{card.kanji}</h1>
             {#if !isRevealed}
               <div class="reveal-hint">
                 <span class="kbd-pill">Пробел</span> или клик для перевода
@@ -381,15 +669,16 @@
               <div class="card-tag">意味と文脈 • Значение и контекст</div>
               
               <div class="translation-head">
-                <div class="transcription-label">{card.translation[currentLang]?.transcription || ''}</div>
-                <h2 class="translation-title">{card.translation[currentLang]?.origin || '—'}</h2>
+                <h2 class="translation-title">{card.translation}</h2>
               </div>
 
-              {#if card.examples.length > 0}
+              {#if card.example_japan}
                 <div class="example-box">
                   <div class="example-label">例文 (Пример):</div>
-                  <div class="example-jp">{card.examples[0].japanese}</div>
-                  <div class="example-target">{card.examples[0].other[currentLang] || ''}</div>
+                  <div class="example-jp">{card.example_japan}</div>
+                  {#if card.example_trans}
+                    <div class="example-target">{card.example_trans}</div>
+                  {/if}
                 </div>
               {/if}
             </div>
@@ -424,8 +713,8 @@
               <span class="c-label">слов пройдено</span>
             </div>
             <div class="c-stat">
-              <span class="c-val">4</span>
-              <span class="c-label">дня серия (стрик)</span>
+              <span class="c-val">{stats.learned_count}</span>
+              <span class="c-label">всего освоено</span>
             </div>
           </div>
           <button class="action-btn-primary completion-btn" onclick={() => navigateTo("dashboard")}>
@@ -450,27 +739,43 @@
           <div class="blitz-intro">
             <h2>60 секунд — максимум слов</h2>
             <p>Тренировка быстрого чтения без пауз и долгих раздумий.</p>
-            <button class="action-btn-primary" onclick={startBlitz}>Начать спринт</button>
+            <button class="action-btn-primary" onclick={startBlitz}>
+              Начать спринт <span class="btn-sub-kbd">[Enter]</span>
+            </button>
           </div>
         {:else if !blitzActive && blitzTimer === 0}
           <div class="blitz-intro">
             <h2>Время истекло</h2>
             <p>Правильных ответов: <strong>{blitzScore}</strong></p>
-            <button class="action-btn-primary" onclick={startBlitz}>Повторить</button>
+            <button class="action-btn-primary" onclick={startBlitz}>
+              Повторить <span class="btn-sub-kbd">[Enter]</span>
+            </button>
           </div>
-        {:else if card}
+        {:else if blitzActive && blitzCard}
           <div class="blitz-word-stage">
-            <div class="blitz-kanji">{card.japanese.origin}</div>
-            <div class="blitz-kana">{card.japanese.kana}</div>
+            <div class="blitz-kanji">{blitzCard.kanji}</div>
+            <div class="blitz-kana">{blitzCard.kana}</div>
 
             <div class="blitz-choice-row">
-              <button class="action-btn-primary" onclick={() => { blitzScore += 1; handleReview("Instantly"); }}>
-                {card.translation[currentLang]?.origin || 'Знаю'}
+              <button class="action-btn-primary" onclick={blitzKnown}>
+                Знаю <span class="btn-sub-kbd">[1]</span>
               </button>
-              <button class="action-btn-outline" onclick={() => handleReview("Repeat")}>
-                Пропустить
+              <button class="action-btn-outline" onclick={blitzSkip}>
+                Пропустить <span class="btn-sub-kbd">[2]</span>
               </button>
             </div>
+          </div>
+        {:else if blitzActive}
+          <div class="blitz-intro">
+            <p>Загрузка карточек...</p>
+          </div>
+        {:else}
+          <div class="blitz-intro">
+            <h2>60 секунд — максимум слов</h2>
+            <p>Тренировка быстрого чтения без пауз и долгих раздумий.</p>
+            <button class="action-btn-primary" onclick={startBlitz}>
+              Начать спринт <span class="btn-sub-kbd">[Enter]</span>
+            </button>
           </div>
         {/if}
       </div>
@@ -479,44 +784,258 @@
   <!-- ================== ЭКРАН 4: ГРАММАТИКА ================== -->
   {:else if currentScreen === "grammar"}
     <div class="content-view grammar-layout">
-      <div class="section-badge">4.0 基本文法 — Базовые правила (N5)</div>
-      <h1 class="page-title">Справочник грамматики</h1>
+      <div class="section-badge">4.0 基本文法 — Справочник грамматики (JLPT N5)</div>
+      
+      <div class="grammar-header-row">
+        <div>
+          <h1 class="page-title">Справочник грамматики</h1>
+          <p class="grammar-subtitle">
+            16 фундаментальных грамматических правил и частиц для сдачи норматива N5
+          </p>
+        </div>
+      </div>
 
+      <!-- Каталожные вкладки (目次 / Реестр разделов) -->
+      <div class="grammar-toolbar">
+        <nav class="grammar-index-nav">
+          <button 
+            class="index-tab" 
+            class:active={grammarCategory === "all"} 
+            onclick={() => grammarCategory = "all"}
+          >
+            <span class="tab-jp">全項目</span>
+            <span class="tab-ru">Все правила</span>
+            <span class="tab-count">[{GRAMMAR_RULES.length}]</span>
+          </button>
+          <button 
+            class="index-tab" 
+            class:active={grammarCategory === "particles"} 
+            onclick={() => grammarCategory = "particles"}
+          >
+            <span class="tab-jp">助詞</span>
+            <span class="tab-ru">Частицы</span>
+            <span class="tab-count">[{GRAMMAR_RULES.filter(r => r.category === 'particles').length}]</span>
+          </button>
+          <button 
+            class="index-tab" 
+            class:active={grammarCategory === "verbs"} 
+            onclick={() => grammarCategory = "verbs"}
+          >
+            <span class="tab-jp">動詞</span>
+            <span class="tab-ru">Глаголы</span>
+            <span class="tab-count">[{GRAMMAR_RULES.filter(r => r.category === 'verbs').length}]</span>
+          </button>
+          <button 
+            class="index-tab" 
+            class:active={grammarCategory === "patterns"} 
+            onclick={() => grammarCategory = "patterns"}
+          >
+            <span class="tab-jp">文型</span>
+            <span class="tab-ru">Конструкции</span>
+            <span class="tab-count">[{GRAMMAR_RULES.filter(r => r.category === 'patterns').length}]</span>
+          </button>
+        </nav>
+
+        <div class="grammar-search-wrap">
+          <span class="search-tag">検索 • Поиск</span>
+          <div class="grammar-search-box">
+            <input 
+              type="text" 
+              bind:value={grammarSearch} 
+              placeholder="Введите частицу, формулу или перевод..." 
+              class="grammar-search-input"
+            />
+            {#if grammarSearch}
+              <button class="search-clear-btn" onclick={() => grammarSearch = ""}>✕</button>
+            {/if}
+          </div>
+        </div>
+      </div>
+
+      <!-- Список статей справочника -->
       <div class="grammar-table-card">
-        <article class="grammar-entry">
-          <div class="entry-index">01</div>
-          <div class="entry-content">
-            <h3>〜は (wa) — Тематическая частица</h3>
-            <p class="formula-line"><code>Существительное + は</code></p>
-            <p class="entry-desc">Выделяет тему высказывания. Часто переводится как «Что касается X, то...».</p>
-            <div class="entry-example">
-              <strong>私は学生です。</strong> (Watashi wa gakusei desu) — Я студент.
-            </div>
+        {#if filteredGrammar.length === 0}
+          <div class="grammar-not-found">
+            <p>Ничего не найдено по запросу «{grammarSearch}»</p>
+            <button class="action-btn-outline" onclick={() => { grammarSearch = ''; grammarCategory = 'all'; }}>
+              Сбросить фильтры
+            </button>
           </div>
-        </article>
-
-        <article class="grammar-entry">
-          <div class="entry-index">02</div>
-          <div class="entry-content">
-            <h3>〜てください (te kudasai) — Вежливая просьба</h3>
-            <p class="formula-line"><code>Глагол в て-форме + ください</code></p>
-            <p class="entry-desc">Стандартный способ вежливо попросить собеседника совершить действие.</p>
-            <div class="entry-example">
-              <strong>日本語で話してください。</strong> (Nihongo de hanashite kudasai) — Пожалуйста, говорите по-японски.
-            </div>
-          </div>
-        </article>
+        {:else}
+          {#each filteredGrammar as rule (rule.id)}
+            <article class="grammar-entry">
+              <div class="entry-index">{rule.id}</div>
+              <div class="entry-content">
+                <div class="entry-top-meta">
+                  <span class="entry-cat-badge">{rule.categoryLabel}</span>
+                </div>
+                <h3>{rule.title}</h3>
+                <p class="formula-line"><code>{rule.formula}</code></p>
+                <p class="entry-desc">{rule.desc}</p>
+                
+                <div class="examples-list">
+                  {#each rule.examples as ex}
+                    <div class="entry-example">
+                      <div class="example-jp-line">
+                        <span class="ex-jp">{ex.jp}</span>
+                        {#if ex.kana}
+                          <span class="ex-kana">({ex.kana})</span>
+                        {/if}
+                      </div>
+                      <div class="ex-ru">{ex.ru}</div>
+                    </div>
+                  {/each}
+                </div>
+              </div>
+            </article>
+          {/each}
+        {/if}
       </div>
     </div>
 
   <!-- ================== ЭКРАН 5: МОЙ СЛОВАРЬ ================== -->
   {:else if currentScreen === "dictionary"}
     <div class="content-view dict-layout">
-      <div class="section-badge">5.0 私の単語帳 — Личные записи</div>
-      <h1 class="page-title">Мой словарь</h1>
+      <div class="section-badge">5.0 私の単語帳 — Каталог лексики и личный словарь (JLPT N5)</div>
+      
+      <div class="dict-header-row">
+        <div>
+          <h1 class="page-title">Словарь выражений</h1>
+          <p class="dict-subtitle">
+            Все {allCards.length} слов из базы данных с персональными интервалами повторения
+          </p>
+        </div>
+      </div>
 
-      <div class="paper-empty-box">
-        <p>Здесь будут собраны отмеченные вами слова и сложные иероглифы для прицельного повторения.</p>
+      <!-- Каталожные вкладки и строка поиска -->
+      <div class="dict-toolbar">
+        <nav class="dict-index-nav">
+          <button 
+            class="index-tab" 
+            class:active={dictFilter === "all"} 
+            onclick={() => dictFilter = "all"}
+          >
+            <span class="tab-jp">全単語</span>
+            <span class="tab-ru">Все слова</span>
+            <span class="tab-count">[{allCards.length}]</span>
+          </button>
+          <button 
+            class="index-tab" 
+            class:active={dictFilter === "learned"} 
+            onclick={() => dictFilter = "learned"}
+          >
+            <span class="tab-jp">習得済</span>
+            <span class="tab-ru">Освоенные</span>
+            <span class="tab-count">[{allCards.filter(c => (c.life_time?.streak?.streak_times ?? 0) > 0).length}]</span>
+          </button>
+          <button 
+            class="index-tab" 
+            class:active={dictFilter === "review"} 
+            onclick={() => dictFilter = "review"}
+          >
+            <span class="tab-jp">復習中</span>
+            <span class="tab-ru">На повторении</span>
+            <span class="tab-count">[{allCards.filter(c => c.life_time?.on_repeat).length}]</span>
+          </button>
+          <button 
+            class="index-tab" 
+            class:active={dictFilter === "new"} 
+            onclick={() => dictFilter = "new"}
+          >
+            <span class="tab-jp">未習</span>
+            <span class="tab-ru">Новые</span>
+            <span class="tab-count">[{allCards.filter(c => (c.life_time?.streak?.streak_times ?? 0) === 0 && !c.life_time?.on_repeat).length}]</span>
+          </button>
+        </nav>
+
+        <div class="dict-controls-row">
+          <div class="dict-search-wrap">
+            <span class="search-tag">単語検索</span>
+            <div class="grammar-search-box">
+              <input 
+                type="text" 
+                bind:value={dictSearch} 
+                placeholder="Поиск по иероглифу, кане или значению..." 
+                class="grammar-search-input"
+              />
+              {#if dictSearch}
+                <button class="search-clear-btn" onclick={() => dictSearch = ""}>✕</button>
+              {/if}
+            </div>
+          </div>
+
+          <div class="dict-sort-wrap">
+            <span class="sort-label">Порядок:</span>
+            <select bind:value={dictSort} class="dict-sort-select">
+              <option value="id">По номеру в базе (1..{allCards.length})</option>
+              <option value="kana">По азбуке каны (五十音順)</option>
+              <option value="interval">По интервалу SRS (длинные сначала)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Реестр слов -->
+      <div class="dict-table-card">
+        {#if filteredCards.length === 0}
+          <div class="grammar-not-found">
+            <p>В словаре не найдено слов по заданным фильтрам</p>
+            <button class="action-btn-outline" onclick={() => { dictSearch = ''; dictFilter = 'all'; }}>
+              Сбросить фильтры
+            </button>
+          </div>
+        {:else}
+          {#each filteredCards as word (word.id)}
+            <article class="dict-entry">
+              <div class="dict-index">{word.id < 10 ? `0${word.id}` : word.id}</div>
+              
+              <div class="dict-main-col">
+                <div class="dict-kana-line">
+                  <span>{word.kana}</span>
+                  <button 
+                    type="button" 
+                    class="dict-mini-audio-btn" 
+                    onclick={(e) => { e.stopPropagation(); playCardAudio(word.id); }}
+                    title="Прослушать {word.kana}"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                      <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                    </svg>
+                  </button>
+                </div>
+                <div class="dict-kanji-line">{word.kanji}</div>
+              </div>
+
+              <div class="dict-trans-col">
+                <div class="dict-translation">{word.translation}</div>
+                {#if word.example_japan}
+                  <div class="dict-example">
+                    <span class="ex-label">例:</span>
+                    <span class="ex-jp">{word.example_japan}</span>
+                    {#if word.example_trans}
+                      <span class="ex-sep">•</span>
+                      <span class="ex-ru">{word.example_trans}</span>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+
+              <div class="dict-meta-col">
+                {#if word.life_time?.on_repeat}
+                  <span class="srs-badge badge-repeat">На повторении</span>
+                {:else if (word.life_time?.streak?.streak_times ?? 0) > 0}
+                  <span class="srs-badge badge-learned">
+                    <span class="badge-fire">🔥</span>
+                    <span>{word.life_time?.interval}д интервал</span>
+                  </span>
+                {:else}
+                  <span class="srs-badge badge-new">Новое</span>
+                {/if}
+              </div>
+            </article>
+          {/each}
+        {/if}
       </div>
     </div>
 
@@ -532,7 +1051,11 @@
             <strong>Целевой язык перевода</strong>
             <p>Язык, на котором отображаются значения и примеры предложений</p>
           </div>
-          <select bind:value={currentLang} class="paper-select">
+          <select 
+            bind:value={appSettings.language} 
+            onchange={() => saveSettings(appSettings.daily_quota, appSettings.language)}
+            class="paper-select"
+          >
             <option value="Ru">Русский (Ru)</option>
             <option value="En">English (En)</option>
             <option value="Es">Español (Es)</option>
@@ -545,7 +1068,14 @@
             <strong>Размер ежедневной колоды</strong>
             <p>Количество новых слов для каждой сессии</p>
           </div>
-          <input type="number" min="5" max="50" value="10" class="paper-input" />
+          <input 
+            type="number" 
+            min="5" 
+            max="50" 
+            bind:value={appSettings.daily_quota} 
+            onchange={() => saveSettings(Number(appSettings.daily_quota) || 10, appSettings.language)}
+            class="paper-input" 
+          />
         </div>
 
         <div class="settings-item">
@@ -615,12 +1145,15 @@
 
   /* ================== ВЕРХНЯЯ СТРОГАЯ НАВИГАЦИЯ ================== */
   .top-nav {
+    width: 100%;
+    max-width: 860px;
+    margin: 0 auto 36px auto;
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 20px 0;
     border-bottom: 1px solid var(--border-line);
-    margin-bottom: 36px;
+    box-sizing: border-box;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }
 
@@ -698,15 +1231,20 @@
   /* ================== ОБЩИЙ МАКЕТ КОНТЕНТА ================== */
   .content-view {
     width: 100%;
-    max-width: 820px;
+    max-width: 860px;
     margin: 0 auto;
     display: flex;
     flex-direction: column;
     align-items: stretch;
   }
 
-  .dash-header {
-    margin-bottom: 24px;
+  .section-badge {
+    align-self: flex-start;
+    font-size: 0.78rem;
+    color: var(--ink-faint);
+    font-family: monospace;
+    margin-bottom: 12px;
+    letter-spacing: 0.04em;
   }
 
   .date-meta {
@@ -788,6 +1326,7 @@
     background: var(--paper-bg);
     border: 1px solid var(--border-line);
     border-radius: 3px;
+    box-sizing: border-box;
     transition: all 0.15s ease;
     overflow: hidden;
   }
@@ -967,6 +1506,10 @@
     color: var(--ink-black);
   }
 
+  .r-day.today .r-mark {
+    color: var(--hanko-red);
+  }
+
   .action-btn-primary {
     background: var(--ink-black);
     color: #FFFFFF;
@@ -1089,125 +1632,6 @@
     font-family: monospace;
     font-size: 0.8rem;
     color: var(--ink-faint);
-  }
-
-  /* ================== ОБЩИЙ МАКЕТ КОНТЕНТА ================== */
-  .content-view {
-    width: 100%;
-    max-width: 860px;
-    margin: 0 auto;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-
-  .section-badge {
-    align-self: flex-start;
-    font-size: 0.8rem;
-    color: var(--ink-faint);
-    font-family: monospace;
-    margin-bottom: 12px;
-  }
-
-  .page-title {
-    align-self: flex-start;
-    font-size: 2.2rem;
-    font-weight: 600;
-    margin: 0 0 8px 0;
-    color: var(--ink-black);
-    font-family: "Hiragino Mincho ProN", serif;
-  }
-
-  .page-desc {
-    align-self: flex-start;
-    color: var(--ink-secondary);
-    margin: 0 0 32px 0;
-    font-size: 1rem;
-    font-family: -apple-system, sans-serif;
-  }
-
-  /* ================== ГЛАВНЫЙ ЭКРАН ================== */
-  .paper-dashboard-card {
-    width: 100%;
-    background: var(--paper-card);
-    border: 1px solid var(--border-line-dark);
-    box-shadow: 0 4px 16px rgba(26, 24, 22, 0.04);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 44px;
-    box-sizing: border-box;
-    border-radius: 4px;
-  }
-
-  .status-indicator {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    font-size: 1.15rem;
-    font-family: -apple-system, sans-serif;
-    color: var(--ink-black);
-  }
-
-  .accent-bar {
-    width: 4px;
-    height: 20px;
-    background-color: var(--hanko-red);
-    display: inline-block;
-  }
-
-  .card-subnote {
-    color: var(--ink-secondary);
-    font-size: 0.92rem;
-    margin: 12px 0 28px 0;
-    max-width: 480px;
-    line-height: 1.5;
-    font-family: -apple-system, sans-serif;
-  }
-
-  .action-btn-primary {
-    background: var(--ink-black);
-    color: #FFFFFF;
-    border: 1px solid var(--ink-black);
-    padding: 12px 28px;
-    font-size: 0.95rem;
-    font-weight: 600;
-    cursor: pointer;
-    border-radius: 3px;
-    font-family: -apple-system, sans-serif;
-    transition: all 0.15s ease;
-  }
-
-  .action-btn-primary:hover {
-    background: var(--hanko-red);
-    border-color: var(--hanko-red);
-  }
-
-  .action-btn-outline {
-    background: transparent;
-    color: var(--ink-black);
-    border: 1px solid var(--border-line-dark);
-    padding: 10px 20px;
-    font-size: 0.9rem;
-    cursor: pointer;
-    border-radius: 3px;
-    font-family: -apple-system, sans-serif;
-  }
-
-  .action-btn-outline:hover {
-    border-color: var(--ink-black);
-  }
-
-  .kanji-seal {
-    width: 96px;
-    height: 96px;
-    border: 2px solid var(--border-line-dark);
-    color: var(--ink-faint);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 3.2rem;
-    font-family: "Hiragino Mincho ProN", serif;
   }
 
   /* ================== РЕЖИМ УРОКА (ДВЕ РАЗДЕЛЬНЫЕ КАРТЫ) ================== */
@@ -1367,6 +1791,70 @@
     text-transform: uppercase;
   }
 
+  .card-top-row {
+    position: absolute;
+    top: 14px;
+    left: 18px;
+    right: 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 2;
+  }
+
+  .card-top-row .card-tag {
+    position: static;
+  }
+
+  .card-audio-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: transparent;
+    border: 1px solid var(--border-line-dark);
+    padding: 3px 8px;
+    border-radius: 3px;
+    color: var(--ink-secondary);
+    font-size: 0.72rem;
+    font-family: monospace;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .card-audio-btn:hover {
+    color: var(--hanko-red);
+    border-color: var(--hanko-red);
+    background: rgba(200, 50, 38, 0.04);
+  }
+
+  .audio-btn-kbd {
+    font-size: 0.7rem;
+    opacity: 0.75;
+  }
+
+  .dict-mini-audio-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid var(--border-line);
+    color: var(--ink-faint);
+    width: 20px;
+    height: 20px;
+    border-radius: 3px;
+    cursor: pointer;
+    padding: 0;
+    margin-left: 6px;
+    vertical-align: middle;
+    transition: all 0.15s ease;
+  }
+
+  .dict-mini-audio-btn:hover {
+    color: var(--hanko-red);
+    border-color: var(--hanko-red);
+    background: rgba(200, 50, 38, 0.06);
+  }
+
   /* Левая карточка (Японский) */
   .card-japanese {
     width: 380px;
@@ -1416,14 +1904,6 @@
   @keyframes slidePaperRight {
     from { opacity: 0; transform: translateX(20px); }
     to { opacity: 1; transform: translateX(0); }
-  }
-
-  .transcription-label {
-    font-size: 0.82rem;
-    color: var(--ink-faint);
-    text-transform: uppercase;
-    font-family: -apple-system, sans-serif;
-    margin-bottom: 2px;
   }
 
   .translation-title {
@@ -1547,17 +2027,171 @@
   }
 
   /* ================== ГРАММАТИКА ================== */
+  .grammar-layout {
+    width: 100%;
+    max-width: 860px;
+  }
+
+  .grammar-header-row {
+    width: 100%;
+    margin-bottom: 24px;
+  }
+
+  .grammar-subtitle {
+    color: var(--ink-secondary);
+    font-size: 0.95rem;
+    margin: 6px 0 0 0;
+    font-family: -apple-system, sans-serif;
+  }
+
+  .grammar-toolbar {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    margin-bottom: 24px;
+    font-family: -apple-system, sans-serif;
+  }
+
+  /* Каталожные вкладки в стиле японского оглавления (目次) */
+  .grammar-index-nav {
+    display: flex;
+    gap: 28px;
+    border-bottom: 1px solid var(--border-line-dark);
+    padding: 0;
+  }
+
+  .index-tab {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 8px 4px 14px 4px;
+    margin-bottom: -1px;
+    color: var(--ink-secondary);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 8px;
+    transition: all 0.15s ease;
+    font-family: -apple-system, sans-serif;
+  }
+
+  .index-tab:hover {
+    color: var(--ink-black);
+  }
+
+  .index-tab.active {
+    color: var(--ink-black);
+    border-bottom-color: var(--hanko-red);
+  }
+
+  .tab-jp {
+    font-family: "Hiragino Mincho ProN", serif;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--ink-black);
+  }
+
+  .index-tab:not(.active) .tab-jp {
+    color: var(--ink-secondary);
+  }
+
+  .tab-ru {
+    font-size: 0.85rem;
+  }
+
+  .tab-count {
+    font-family: monospace;
+    font-size: 0.72rem;
+    color: var(--ink-faint);
+  }
+
+  .index-tab.active .tab-count {
+    color: var(--hanko-red);
+    font-weight: 700;
+  }
+
+  /* Строгая плашка поиска */
+  .grammar-search-wrap {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: var(--paper-card);
+    border: 1px solid var(--border-line-dark);
+    padding: 6px 14px;
+    border-radius: 3px;
+    box-shadow: 0 1px 4px rgba(26, 24, 22, 0.02);
+  }
+
+  .search-tag {
+    font-family: monospace;
+    font-size: 0.72rem;
+    color: var(--ink-faint);
+    white-space: nowrap;
+    letter-spacing: 0.05em;
+    padding-right: 12px;
+    border-right: 1px solid var(--border-line);
+  }
+
+  .grammar-search-box {
+    position: relative;
+    flex: 1;
+    display: flex;
+    align-items: center;
+  }
+
+  .grammar-search-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 28px 6px 4px;
+    background: transparent;
+    border: none;
+    font-size: 0.9rem;
+    color: var(--ink-black);
+    font-family: -apple-system, sans-serif;
+    outline: none;
+  }
+
+  .search-clear-btn {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: transparent;
+    border: none;
+    color: var(--ink-faint);
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 4px;
+  }
+
+  .search-clear-btn:hover {
+    color: var(--ink-black);
+  }
+
   .grammar-table-card {
     width: 100%;
     background: var(--paper-card);
     border: 1px solid var(--border-line-dark);
     border-radius: 4px;
+    box-shadow: 0 4px 16px rgba(26, 24, 22, 0.03);
+    margin-bottom: 40px;
+  }
+
+  .grammar-not-found {
+    padding: 56px 24px;
+    text-align: center;
+    color: var(--ink-secondary);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
   }
 
   .grammar-entry {
     display: flex;
     gap: 24px;
-    padding: 28px;
+    padding: 28px 32px;
     border-bottom: 1px solid var(--border-line);
   }
 
@@ -1567,43 +2201,313 @@
 
   .entry-index {
     font-family: monospace;
-    font-size: 1rem;
+    font-size: 1.1rem;
     color: var(--hanko-red);
     font-weight: 700;
+    min-width: 24px;
+  }
+
+  .entry-content {
+    flex: 1;
+  }
+
+  .entry-top-meta {
+    margin-bottom: 6px;
+  }
+
+  .entry-cat-badge {
+    font-size: 0.72rem;
+    font-family: monospace;
+    background: var(--paper-bg);
+    border: 1px solid var(--border-line);
+    padding: 2px 7px;
+    border-radius: 2px;
+    color: var(--ink-faint);
+    font-weight: 600;
+    letter-spacing: 0.04em;
   }
 
   .entry-content h3 {
-    margin: 0 0 6px 0;
-    font-size: 1.2rem;
+    margin: 4px 0 8px 0;
+    font-size: 1.25rem;
     font-family: "Hiragino Mincho ProN", serif;
+    color: var(--ink-black);
   }
 
   .formula-line {
     font-family: -apple-system, sans-serif;
     font-size: 0.88rem;
     color: var(--ink-secondary);
-    margin: 4px 0 10px 0;
+    margin: 4px 0 12px 0;
   }
 
   .formula-line code {
     background: var(--paper-bg);
-    padding: 2px 6px;
-    border: 1px solid var(--border-line);
+    padding: 3px 8px;
+    border: 1px solid var(--border-line-dark);
     border-radius: 2px;
+    color: var(--ink-black);
+    font-weight: 600;
   }
 
   .entry-desc {
     font-family: -apple-system, sans-serif;
     font-size: 0.92rem;
     color: var(--ink-secondary);
-    line-height: 1.5;
-    margin: 0 0 12px 0;
+    line-height: 1.6;
+    margin: 0 0 16px 0;
+  }
+
+  .examples-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 12px;
   }
 
   .entry-example {
-    font-size: 0.98rem;
-    padding-left: 12px;
+    font-size: 0.95rem;
+    padding-left: 14px;
     border-left: 2px solid var(--border-line-dark);
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    background: rgba(247, 245, 240, 0.4);
+    padding: 8px 12px;
+    border-radius: 0 3px 3px 0;
+  }
+
+  .example-jp-line {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+  }
+
+  .ex-jp {
+    font-weight: 600;
+    color: var(--ink-black);
+    font-family: "Hiragino Mincho ProN", serif;
+    font-size: 1.05rem;
+  }
+
+  .ex-kana {
+    font-size: 0.78rem;
+    color: var(--ink-faint);
+    font-family: monospace;
+  }
+
+  .ex-ru {
+    font-size: 0.88rem;
+    color: var(--ink-secondary);
+    font-family: -apple-system, sans-serif;
+  }
+
+  /* ================== СЛОВАРЬ (5.0 単語帳) ================== */
+  .dict-layout {
+    width: 100%;
+    max-width: 860px;
+  }
+
+  .dict-header-row {
+    width: 100%;
+    margin-bottom: 24px;
+  }
+
+  .dict-subtitle {
+    color: var(--ink-secondary);
+    font-size: 0.95rem;
+    margin: 6px 0 0 0;
+    font-family: -apple-system, sans-serif;
+  }
+
+  .dict-toolbar {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    margin-bottom: 24px;
+    font-family: -apple-system, sans-serif;
+  }
+
+  .dict-index-nav {
+    display: flex;
+    gap: 28px;
+    border-bottom: 1px solid var(--border-line-dark);
+    padding: 0;
+  }
+
+  .dict-controls-row {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    width: 100%;
+  }
+
+  .dict-search-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: var(--paper-card);
+    border: 1px solid var(--border-line-dark);
+    padding: 6px 14px;
+    border-radius: 3px;
+    box-shadow: 0 1px 4px rgba(26, 24, 22, 0.02);
+  }
+
+  .dict-sort-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    color: var(--ink-secondary);
+    white-space: nowrap;
+  }
+
+  .sort-label {
+    font-family: monospace;
+    font-size: 0.75rem;
+    color: var(--ink-faint);
+  }
+
+  .dict-sort-select {
+    background: var(--paper-card);
+    border: 1px solid var(--border-line-dark);
+    padding: 7px 12px;
+    border-radius: 3px;
+    font-size: 0.85rem;
+    color: var(--ink-black);
+    outline: none;
+    font-family: -apple-system, sans-serif;
+    cursor: pointer;
+  }
+
+  .dict-table-card {
+    width: 100%;
+    background: var(--paper-card);
+    border: 1px solid var(--border-line-dark);
+    border-radius: 4px;
+    box-shadow: 0 4px 16px rgba(26, 24, 22, 0.03);
+    margin-bottom: 40px;
+  }
+
+  .dict-entry {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border-line);
+    transition: background-color 0.15s ease;
+  }
+
+  .dict-entry:hover {
+    background-color: rgba(247, 245, 240, 0.5);
+  }
+
+  .dict-entry:last-child {
+    border-bottom: none;
+  }
+
+  .dict-index {
+    font-family: monospace;
+    font-size: 0.85rem;
+    color: var(--ink-faint);
+    min-width: 26px;
+  }
+
+  .dict-main-col {
+    min-width: 130px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .dict-kana-line {
+    font-size: 0.72rem;
+    color: var(--ink-faint);
+    letter-spacing: 0.04em;
+  }
+
+  .dict-kanji-line {
+    font-size: 1.45rem;
+    font-weight: 500;
+    color: var(--ink-black);
+    font-family: "Hiragino Mincho ProN", serif;
+    line-height: 1.2;
+  }
+
+  .dict-trans-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .dict-translation {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--ink-black);
+    font-family: -apple-system, sans-serif;
+  }
+
+  .dict-example {
+    font-size: 0.85rem;
+    color: var(--ink-secondary);
+    display: flex;
+    gap: 6px;
+    align-items: baseline;
+    flex-wrap: wrap;
+  }
+
+  .ex-label {
+    font-family: monospace;
+    font-size: 0.72rem;
+    color: var(--hanko-red);
+    font-weight: 700;
+  }
+
+  .ex-sep {
+    color: var(--border-line-dark);
+  }
+
+  .dict-meta-col {
+    display: flex;
+    justify-content: flex-end;
+    min-width: 120px;
+  }
+
+  .srs-badge {
+    font-size: 0.75rem;
+    font-family: monospace;
+    padding: 3px 8px;
+    border-radius: 2px;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .badge-new {
+    background: var(--paper-bg);
+    border: 1px solid var(--border-line);
+    color: var(--ink-faint);
+  }
+
+  .badge-repeat {
+    background: rgba(200, 50, 38, 0.08);
+    border: 1px solid var(--hanko-red);
+    color: var(--hanko-red);
+    font-weight: 600;
+  }
+
+  .badge-learned {
+    background: rgba(22, 163, 74, 0.08);
+    border: 1px solid #16A34A;
+    color: #16A34A;
+    font-weight: 600;
+  }
+
+  .badge-fire {
+    font-size: 0.8rem;
   }
 
   /* ================== НАСТРОЙКИ ================== */
@@ -1640,17 +2544,6 @@
     color: var(--ink-black);
     font-size: 0.9rem;
     border-radius: 2px;
-  }
-
-  .paper-empty-box {
-    background: var(--paper-card);
-    border: 1px solid var(--border-line-dark);
-    padding: 48px;
-    text-align: center;
-    border-radius: 4px;
-    width: 100%;
-    box-sizing: border-box;
-    font-family: -apple-system, sans-serif;
   }
 
   .seal-mark {
