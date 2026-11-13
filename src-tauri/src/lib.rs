@@ -1,9 +1,10 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+use std::path::PathBuf;
 use std::collections::{VecDeque};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::sync::Mutex;
 use rusqlite::Connection;
-use tauri::State;
+use tauri::{State, Manager};
 use crate::structs::{Card, DeckStats, RecallLevel, Schedule, CardDeck, Streak, DayActivity, UserProgress, AppSettings};
 //const SESSION_LIMIT: usize = 10;
 
@@ -65,7 +66,14 @@ fn get_all_cards(state: State<Mutex<CardDeck>>) -> Vec<Card> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .manage(Mutex::new(CardDeck::new()))
+        .setup(|app| {
+            let data_dir = app.path().app_data_dir()?;
+            if !data_dir.exists() {
+                std::fs::create_dir_all(&data_dir)?;
+            }
+            app.manage(Mutex::new(CardDeck::new(data_dir.join("kotoba.db"))));
+            Ok(())
+            })
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![get_current_card, get_all_cards, review, get_random_card, get_deck_stats, get_user_progress, get_app_settings, save_app_settings])
         .run(tauri::generate_context!())
@@ -117,8 +125,8 @@ impl Schedule{
 }
 
 impl CardDeck{
-    pub fn new() -> Self {
-        let mut conn = Connection::open("kotoba.db").expect("Failed to open kotoba database");
+    pub fn new(db_path: PathBuf) -> Self {
+        let mut conn = Connection::open(&db_path).expect("Failed to open kotoba database");
         db::init_db(&conn).expect("Failed to initialize database");
         db::seed_is_empty(&mut conn).expect("Failed to seed database");
         let cards = db::load_cards(&conn).expect("Failed to load cards from db");
