@@ -122,7 +122,7 @@ jobs:
           docker run --rm -v "${{ github.workspace }}:/work" archlinux:base-devel bash -euxo pipefail -c '
             pacman -Sy --noconfirm --needed archlinux-keyring
             pacman -Syu --noconfirm --needed \
-              cairo gdk-pixbuf2 glib2 glibc gtk3 hicolor-icon-theme libsoup3 pango webkit2gtk-4.1 \
+              cairo gdk-pixbuf2 glib2 glibc gst-plugins-good gtk3 hicolor-icon-theme libsoup3 pango webkit2gtk-4.1 \
               git rust nodejs npm librsvg
             useradd -m builder
             mkdir -p /home/builder/build
